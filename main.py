@@ -8,10 +8,10 @@ Created on Thu Jan 21 10:37:01 2021
 import pandas as pd
 import numpy as np
 import os
-os.chdir(r'D:\Files\GitProjects\portfolio optimization')
+#os.chdir(r'D:\Files\GitProjects\portfolio optimization')
 files = os.listdir('./data')
 
-df = pd.Series()
+df = pd.Series(dtype=np.float64)
 for file in files:
     df_tmp = pd.read_csv(os.path.join('data',file),index_col=0,infer_datetime_format=True)['Adj Close']
     df_tmp = df_tmp.rename( file[:-4] )
@@ -39,7 +39,6 @@ exp_ret = log_ret_df.mean()
 import scipy.optimize as sco
 import cvxpy as cp
 
-bounds = ((0,0.2),) * 7
 bounds = (0,0.4)
 uncertain_scale = 1.5
 
@@ -89,17 +88,55 @@ def penalized_robust_mean_variance(exp_ret, cov, penalty = 0.1, bounds = (0,1),s
                   weight <= upper
                   ]
 
-    prob = cp.Problem(  cp.Minimize( cp.quad_form(weight, cov) - penalty * (exp_ret @ weight) + uncertain_scale * cp.norm(weight @ ret_stde_root,2) ),
-                          constraints = cons )
+    prob = cp.Problem(  
+        cp.Minimize( 
+            cp.quad_form(weight, cov) - penalty * (exp_ret @ weight) + uncertain_scale * cp.norm(weight @ ret_stde_root,2)
+            ),
+            constraints = cons 
+        )
 
     prob.solve()
     return {'weight': weight.value, 'obj': prob.value}
     
+
+def risk_parity(cov, obj_formula_type = 1):
+    n = len(cov)
+    if obj_formula_type == 1:
+        ## formula 1
+        weight = cp.Variable(n,nonneg=True)
+        cons = [weight >= 0]
+        prob = cp.Problem( 
+            cp.Minimize( 
+                0.5 * cp.quad_form(weight,cov) - np.ones(n) @ cp.atoms.elementwise.log.log(weight)
+                ),
+            constraints = cons
+            )
+        prob.solve()
+        print('optimization is ' + prob.status)
+        res = {'weight': weight.value/weight.value.sum()}
+    else:
+        ## formula 2  ## cp.sum_squares(cp.diag(weight) @ (cov @ weight) - aux_var)
+        def riskparity_obj(x):
+            ## the last variable is an auxiliary variable which will be the risk contribution of each component
+            w=np.mat(x[:-1]).T
+            ## enlarge the covariance to make convergence more accurate
+            obj = np.square(np.diag(x[:-1]) * (cov*10000 * w) - x[-1]).sum()
+            return obj
+        cons = ({'type': 'eq', 'fun': lambda w:  sum(w[:-1]) -1})
+        bnds = ((0, 1),) * n + ((0,None),)
+        w_ini = np.ones(n) / n
+        w_ini = np.insert(w_ini,n,1)
+        res = sco.minimize(riskparity_obj, w_ini, bounds=bnds,constraints=cons,options={'disp':True,'ftol':10**-10})
+        res = {'weight': res['x']}
+    return res 
     
-    
-    
-    
-    
-    
-    
-    
+
+def MaxDiverwgtfind(sigma,penalty = 0., bounds = (0,1) ):
+    n = len(sigma)
+    sigma_pena = sigma + np.eye(n) * penalty
+    diversification=lambda x: -np.dot( np.sqrt(np.diag(sigma_pena)),x).sum()/np.sqrt(np.dot(x.T,np.dot(sigma_pena,x)))
+    cons=({'type':'eq', 'fun':lambda x: np.nansum(x)-1})
+    w_ini=np.ones(n) / n
+    bnds= ((0,1),)*7
+    result=sco.minimize(diversification,w_ini,bounds=bnds,constraints=cons,options={'ftol':10**-8,'disp':True})
+

@@ -27,17 +27,53 @@ class PortfolioOptimzer():
         return 'Portfolio optimizer object'
     
     def show_methods(self):
+        print('-----equal_weight-----')
+        print('-----inver_vol-----')
         print('-----target_return_RobustMV-----')
-        print('put the target return as a strict constraint to let expected return satisfies with uncertainty allowance, then minimize the variance')
         print('-----penalized_RobustMV-----')
-        print('set the expected return as a penalty term in the objective with uncertainty allowance, then do the minimization')
-        print('MaxDiver')
-        print('MinCVaR')
-        print('EqualWeight')
-        print('InverseVol')
-        print('RiskParity')
+        print('-----max_diver_ratio-----')
+        print('-----risk_parity-----')
+        print('-----MinCVaR-----')
     
+    def equal_weight(self,n):
+        '''
+        Parameters
+        ----------
+        n : Int
+            number of components in the portfolio
+
+        Returns
+        -------
+        numpy.array
+        '''
+        return np.ones(n) / n
     
+    def inverse_vol(self,cov, vol_or_var = 'vol'):
+        '''
+        The weight of each component is inversely proportional to its volatility or variance
+
+        Parameters
+        ----------
+        cov : numpy.array
+            covariance matrix
+        vol_or_var : str, optional
+            if 'vol' then inversely proportion to the volatility, otherwise variance
+            The default is 'vol'.
+
+        Returns
+        -------
+        dict 
+            {'x': weight}
+
+        '''
+        if vol_or_var == 'vol':
+            inv_vols = 1 / np.sqrt(np.diag(cov))
+        else:
+            ## inverse variance
+            inv_vols = 1 / np.diag(cov)
+        weight = inv_vols / inv_vols.sum()
+        
+        return {'x': weight}
     
     def target_return_RobustMV(self, exp_ret, cov, target_ret = 0, bounds = (0,1),shrink_size = 1000, uncertain_scale = 0 ):
         '''
@@ -121,10 +157,11 @@ class PortfolioOptimzer():
             The default is (0,1).
         shrink_size : Int, optional
             typically the sample size used to estimate the covariance matrix and expected return
+            this number is used to estimate the standard error of return estimates by dividing covariance with this number
             The default is 1000.
         uncertain_scale : float, optional
             uncertain level bounding the extimated return, the higher the less sensitive of optimized return with regard to the extimated return
-            The default is 0.
+            The default is 0, usually can be quantile of normal distribution(95%,99% etc.)
 
         Returns
         -------
@@ -150,33 +187,111 @@ class PortfolioOptimzer():
         print(prob.status)
         return {'x': weight.value, 'obj': prob.value}
     
-    
-    def inverse_vol(self,cov, vol_or_var = 'vol'):
+    def risk_parity(self,cov, bounds = (0,1) ):
         '''
-        The weight of each component is inversely proportional to its volatility or variance
+        equalize risk contribution of each component in the portfolio
+        the risk contribution of component i is R_i = w_i * (cov * w)_i
+        
+        note that: long only to have the unique solution
+        if bounds takes effect, then the risk contribution will not be equal
+        
+        Parameters
+        ----------
+        cov : numpy.array
+            covariance matrix 
+        
+        bounds: tuple or nested tuple
+            weight bound of each component    
+            The default is (0,1).
+        
+        Returns
+        -------
+        dict
+            {'x': weight, 'target_contribution': risk contribution}
 
+        '''
+        cov = np.array(cov)
+        n = len(cov)
+        '''
+        lower,upper = self.set_bounds(bounds)
+        ## formula 1
+        weight = cp.Variable(n,nonneg=True)
+        cons = [weight >= 0]
+        prob = cp.Problem( 
+            cp.Minimize( 
+                0.5 * cp.quad_form(weight,cov) - np.ones(n) @ cp.log(weight)
+                ),
+            constraints = cons
+            )
+        prob.solve()
+        print('optimization is ' + prob.status)
+        res = {'x': weight.value/weight.value.sum()}
+        '''
+        ## formula 2  ## cp.sum_squares(cp.diag(weight) @ (cov @ weight) - aux_var)
+        def riskparity_obj(x):
+            ## the last variable is an auxiliary variable which will be the risk contribution of each component
+            w=np.mat(x[:-1]).T
+            ## enlarge the covariance to make convergence more accurate
+            obj = np.square(np.diag(x[:-1]) * (cov*10000 * w) - x[-1]).sum()
+            return obj
+        cons = ({'type': 'eq', 'fun': lambda w:  sum(w[:-1]) -1})
+        if not isinstance(bounds[0],tuple):
+            bnds = (bounds,) * n + ((0,None))
+        else:
+            bnds = bounds + ((0,None),)
+        w_ini = np.ones(n) / n
+        w_ini = np.insert(w_ini,n,1)
+        prob = sco.minimize(riskparity_obj, w_ini, bounds=bnds,constraints=cons,options={'disp':True,'ftol':10**-8})
+        print(prob['message'])
+        res = {'weight': prob['x'][:-1], 'target_contribution': prob['x'][-1]}
+        
+        return res
+    
+    def max_diver_ratio(cov,penalty = 0., bounds = (0,1) ):
+        '''
+        maximize diversification ratio of the portfolio (the proportion of accounted by its own variance is the largest)
+        sum of component variance is sum(w * diag(cov))
+        vol = sqrt(w^T * cov * w)
+        diver_ratio = sum(w * diag(cov)) / vol
+        
         Parameters
         ----------
         cov : numpy.array
             covariance matrix
-        vol_or_var : str, optional
-            if 'vol' then inversely proportion to the volatility, otherwise variance
-            The default is 'vol'.
+        penalty : float, optional
+            the penalty added on the diagonal variance to make portfolio less concentraded
+            The default is 0.., typical value range from 0.01 to 1
+        bounds : tuple or nested tuple
+            weight bound of each component  
+            The default is (0,1).
 
         Returns
         -------
-        weight : numpy.array
-            weight of the portfolio
+        dict
+            {'x':weight, 'diversification ratio': diversifcation ratio}
 
         '''
-        if vol_or_var == 'vol':
-            inv_vols = 1 / np.sqrt(np.diag(cov))
-        else:
-            ## inverse variance
-            inv_vols = 1 / np.diag(cov)
-        weight = inv_vols / inv_vols.sum()
+        n = len(cov)
+        ## add penalty to make investment less concentrated
+        sigma_pena = cov * 1000 + np.eye(n) * penalty
+        diver_ratio = lambda x: -np.dot( np.sqrt(np.diag(sigma_pena)),x).sum()/np.sqrt(np.dot(x.T,np.dot(sigma_pena,x)))
+        cons=({'type':'eq', 'fun':lambda x: np.nansum(x)-1})
+        w_ini=np.ones(n) / n
         
-        return weight
+        ## define bounds for each component
+        if not isinstance(bounds[0],tuple):
+            bnds = (bounds,) * n 
+        else:
+            bnds = bounds
+
+        prob = sco.minimize( diver_ratio,w_ini,
+                            bounds=bnds,
+                            constraints=cons,
+                            options={'ftol':10**-8,'disp':True}
+                            )
+        print(prob['message'])
+        
+        return {'weight': prob['x'], 'diversification ratio': -prob['fun']}
     
     def set_bounds(self, bounds):
         ## recycle if only give bound for one variable
