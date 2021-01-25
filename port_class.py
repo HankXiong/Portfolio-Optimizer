@@ -5,12 +5,8 @@ Created on Thu Jan 21 12:02:09 2021
 @author: Lenovo
 """
 
-import pandas as pd
 import numpy as np
-import sklearn.covariance as skc
-
-import cvxopt as cvx
-from cvxopt import matrix
+import scipy.optimize as sco
 import cvxpy as cp
 
 class PortfolioOptimzer():
@@ -29,11 +25,11 @@ class PortfolioOptimzer():
     def show_methods(self):
         print('-----equal_weight-----')
         print('-----inver_vol-----')
-        print('-----target_return_RobustMV-----')
-        print('-----penalized_RobustMV-----')
+        print('-----target_return_robustMV-----')
+        print('-----penalized_robustMV-----')
         print('-----max_diver_ratio-----')
         print('-----risk_parity-----')
-        print('-----MinCVaR-----')
+        print('-----min_CVaR_loss-----')
     
     def equal_weight(self,n):
         '''
@@ -66,6 +62,7 @@ class PortfolioOptimzer():
             {'x': weight}
 
         '''
+        cov = np.array(cov)
         if vol_or_var == 'vol':
             inv_vols = 1 / np.sqrt(np.diag(cov))
         else:
@@ -75,7 +72,7 @@ class PortfolioOptimzer():
         
         return {'x': weight}
     
-    def target_return_RobustMV(self, exp_ret, cov, target_ret = 0, bounds = (0,1),shrink_size = 1000, uncertain_scale = 0 ):
+    def target_return_robustMV(self, exp_ret, cov, target_ret = 0, bounds = (0,1),shrink_size = 1000, uncertain_scale = 0 ):
         '''
         put the target return as a strict constraint to let expected return satisfies with uncertainty allowance, then minimize the variance
         Min: x^T * cov *  x
@@ -129,10 +126,10 @@ class PortfolioOptimzer():
         prob = cp.Problem(  cp.Minimize(cp.quad_form(weight, cov)),
                       constraints = cons )
         prob.solve(reltol=1e-6)
-        print(prob.status)
+        print('optimization reached ', prob.status)
         return {'x': weight.value, 'obj': prob.value}
     
-    def penalized_RobustMV(self, exp_ret, cov, penalty = 0.1, bounds = (0,1),shrink_size = 1000, uncertain_scale = 0):
+    def penalized_robustMV(self, exp_ret, cov, penalty = 0.1, bounds = (0,1),shrink_size = 1000, uncertain_scale = 0):
         '''
         treat expected return as a penalty in the objective to do a risk return trade-off, also includes the uncertainty of the expected return, 
         then minimize objective
@@ -184,7 +181,7 @@ class PortfolioOptimzer():
         prob = cp.Problem(  cp.Minimize( cp.quad_form(weight, cov) - penalty * (exp_ret @ weight) + uncertain_scale * cp.norm(weight @ ret_stde_root,2) ),
                      constraints = cons )
         prob.solve(reltol=1e-6)
-        print(prob.status)
+        print('optimization reached ', prob.status)
         return {'x': weight.value, 'obj': prob.value}
     
     def risk_parity(self,cov, bounds = (0,1) ):
@@ -243,11 +240,11 @@ class PortfolioOptimzer():
         w_ini = np.insert(w_ini,n,1)
         prob = sco.minimize(riskparity_obj, w_ini, bounds=bnds,constraints=cons,options={'disp':True,'ftol':10**-8})
         print(prob['message'])
-        res = {'weight': prob['x'][:-1], 'target_contribution': prob['x'][-1]}
+        res = {'x': prob['x'][:-1], 'target_contribution': prob['x'][-1]}
         
         return res
     
-    def max_diver_ratio(cov,penalty = 0., bounds = (0,1) ):
+    def max_diver_ratio(self, cov, penalty = 0., bounds = (0,1) ):
         '''
         maximize diversification ratio of the portfolio (the proportion of accounted by its own variance is the largest)
         sum of component variance is sum(w * diag(cov))
@@ -271,7 +268,9 @@ class PortfolioOptimzer():
             {'x':weight, 'diversification ratio': diversifcation ratio}
 
         '''
-        n = len(cov)
+        
+        cov = np.array(cov)
+        n = cov.shape[0]
         ## add penalty to make investment less concentrated
         sigma_pena = cov * 1000 + np.eye(n) * penalty
         diver_ratio = lambda x: -np.dot( np.sqrt(np.diag(sigma_pena)),x).sum()/np.sqrt(np.dot(x.T,np.dot(sigma_pena,x)))
@@ -291,7 +290,61 @@ class PortfolioOptimzer():
                             )
         print(prob['message'])
         
-        return {'weight': prob['x'], 'diversification ratio': -prob['fun']}
+        return {'x': prob['x'], 'diversification ratio': -prob['fun']}
+    
+    def min_CVaR_loss(self,ret_hist, alpha = 0.9, bounds = (0,1) ):
+        '''
+        Minimize CVaR at alpha percentile given all return scenarios,
+        this can be simplied into a linear programming problem by including auxiliary variables
+
+        Parameters
+        ----------
+        ret_hist : numpy.array
+            all possible return scenarios of portfolio component
+        alpha : float, optional
+            The confidence level at which CVaR will be optimized
+            The default is 0.9.
+        bounds : tuple or nested tuple, optional
+            lower and upper bound for the portfolio component
+            The default is (0,1).
+
+        Returns
+        -------
+        DICT
+            {'x' : component weight,
+             'VaR': Value-at-Risk in alpha level,
+             'CVaR': the optimized CVaR,
+             'auxiliary variables': auxiliary variables}
+
+        '''
+        loss_hist = - np.array(ret_hist) ## convert to loss 
+        n = loss_hist.shape[1]
+        number_scenarios = loss_hist.shape[0]
+        
+        gamma = cp.Variable(1) ## will be VaR_alpha in optimization
+        weight = cp.Variable(n)
+        aux_z = cp.Variable(number_scenarios,nonneg=True)
+        
+        lower,upper = self.set_bounds(bounds)
+        
+        obj = gamma + 1 / (1 - alpha) / number_scenarios * cp.norm(aux_z,1)
+        cons = [
+                aux_z >= 0,
+                aux_z >= loss_hist @ weight - gamma,
+                np.ones(n) @ weight == 1,
+                weight >= lower,
+                weight <= upper
+                ]
+        prob = cp.Problem( 
+            cp.Minimize(obj), constraints = cons
+            )
+        prob.solve()
+        print('optimization reached ', prob.status)
+        res = {'x': weight.value, 
+               'VaR': gamma.value[0],
+               'CVaR': prob.value,
+               'auxiliary variables': aux_z.value}
+        return res
     
     def set_bounds(self, bounds):
         ## recycle if only give bound for one variable
