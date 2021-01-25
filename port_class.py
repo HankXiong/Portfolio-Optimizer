@@ -2,7 +2,7 @@
 """
 Created on Thu Jan 21 12:02:09 2021
 
-@author: Lenovo
+@author: Hank Xiong
 """
 
 import numpy as np
@@ -11,6 +11,7 @@ import cvxpy as cp
 
 class PortfolioOptimzer():
     def __init__(self):
+        ## blank constructor
         '''
         self.exp_ret = None            
         self.cov = None       
@@ -184,7 +185,7 @@ class PortfolioOptimzer():
         print('optimization reached ', prob.status)
         return {'x': weight.value, 'obj': prob.value}
     
-    def risk_parity(self,cov, bounds = (0,1) ):
+    def risk_parity(self, cov, bounds = (0,1) ):
         '''
         equalize risk contribution of each component in the portfolio
         the risk contribution of component i is R_i = w_i * (cov * w)_i
@@ -233,7 +234,7 @@ class PortfolioOptimzer():
             return obj
         cons = ({'type': 'eq', 'fun': lambda w:  sum(w[:-1]) -1})
         if not isinstance(bounds[0],tuple):
-            bnds = (bounds,) * n + ((0,None))
+            bnds = (bounds,) * n + ((0,None),)
         else:
             bnds = bounds + ((0,None),)
         w_ini = np.ones(n) / n

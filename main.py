@@ -2,7 +2,7 @@
 """
 Created on Thu Jan 21 10:37:01 2021
 
-@author: Lenovo
+@author: Hank Xiong
 """
 
 import pandas as pd
@@ -29,13 +29,13 @@ df_week = df.resample(pd.offsets.Week(weekday=0),closed = 'left',label='left').b
 log_ret_df = np.log(df_week) - np.log(df_week).shift(1)
 log_ret_df.dropna(axis = 0,inplace = True)
 
-
+## empirical covariance
 cov = log_ret_df.cov()
-
+## expected return
 exp_ret = log_ret_df.mean() * 52
 
 
-bounds = (0,1)
+bounds = (0,1) ## ((0,1),) * cov.shape[0]
 uncertain_scale = 1.5
 
 P = PortfolioOptimzer()
