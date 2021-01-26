@@ -6,10 +6,12 @@ Test example can be seen in the main.py, the following provides the mathmatical 
 
 Note:
 - **X** is weight
-- **\Sigma** is covariance matrix
-- **\hat{\mu}** is expected return
+- <img src="http://latex.codecogs.com/svg.latex?\Sigma" title="http://latex.codecogs.com/svg.latex?\Sigma" /> is covariance matrix
+- <img src="http://latex.codecogs.com/svg.latex?\hat{\mu}" title="http://latex.codecogs.com/svg.latex?\hat{\mu}" /> is expected return
 - **L** is the uncertain level
-- **\Theta** is the estimated return standard error, which is *diag(diag(\Sigma) / shrink_size)*
+- <img src="http://latex.codecogs.com/svg.latex?\Theta" title="http://latex.codecogs.com/svg.latex?\Theta" /> is the estimated return standard error, which is *diag(diag(\Sigma) / shrink_size)*
+- <img src="http://latex.codecogs.com/svg.latex?\lambda" title="http://latex.codecogs.com/svg.latex?\lambda" /> is the penalty
+- <img src="http://latex.codecogs.com/svg.latex?\alpha" title="http://latex.codecogs.com/svg.latex?\alpha" /> is the confidence level for min_CVaR_loss
 
 
 1. **target_return_robustMV**
