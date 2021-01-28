@@ -15,7 +15,7 @@ Note:
 
 if not specified, the following optimizations all have constraints below:
 
-<-- <img src="http://latex.codecogs.com/svg.latex?\begin{align*}&X^T&space;\boldsymbol{1}&space;=&space;1&space;\\&X&space;\geq&space;lower\_bound&space;\\&X&space;\leq&space;upper\_bound&space;\\\end{align*}&space;" title="http://latex.codecogs.com/svg.latex?\begin{align*}&X^T \boldsymbol{1} = 1 \\&X \geq lower\_bound \\&X \leq upper\_bound \\\end{align*} " /> -->
+<!-- <img src="http://latex.codecogs.com/svg.latex?\begin{align*}&X^T&space;\boldsymbol{1}&space;=&space;1&space;\\&X&space;\geq&space;lower\_bound&space;\\&X&space;\leq&space;upper\_bound&space;\\\end{align*}&space;" title="http://latex.codecogs.com/svg.latex?\begin{align*}&X^T \boldsymbol{1} = 1 \\&X \geq lower\_bound \\&X \leq upper\_bound \\\end{align*} " /> -->
 
 <img src="https://latex.codecogs.com/gif.latex?\begin{cases}&space;X^T&space;\mathbf{1}&space;=&space;1&space;\\&space;X&space;\leq&space;upper\_bound&space;\\&space;X&space;\geq&space;lower\_bound&space;\\&space;\end{cases}" title="\begin{cases} X^T \mathbf{1} = 1 \\ X \leq upper\_bound \\ X \geq lower\_bound \\ \end{cases}" />
 
