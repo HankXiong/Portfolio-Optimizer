@@ -250,7 +250,7 @@ class PortfolioOptimzer():
         maximize diversification ratio of the portfolio (the proportion of accounted by its own variance is the largest)
         sum of component variance is sum(w * diag(cov))
         vol = sqrt(w^T * cov * w)
-        diver_ratio = sum(w * diag(cov)) / vol
+        diver_ratio = sum(w * (sqrt(diag(cov)) + penalty) ) / vol
         
         Parameters
         ----------
@@ -273,8 +273,8 @@ class PortfolioOptimzer():
         cov = np.array(cov)
         n = cov.shape[0]
         ## add penalty to make investment less concentrated
-        sigma_pena = cov * 1000 + np.eye(n) * penalty
-        diver_ratio = lambda x: -np.dot( np.sqrt(np.diag(sigma_pena)),x).sum()/np.sqrt(np.dot(x.T,np.dot(sigma_pena,x)))
+        sigma_pena = np.sqrt(np.diag(cov)) + np.eye(n) * penalty
+        diver_ratio = lambda x: -np.dot( sigma_pena ,x).sum()/np.sqrt(np.dot(x.T,np.dot(cov,x)))
         cons=({'type':'eq', 'fun':lambda x: np.nansum(x)-1})
         w_ini=np.ones(n) / n
         

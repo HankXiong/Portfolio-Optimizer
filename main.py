@@ -38,6 +38,8 @@ exp_ret = log_ret_df.mean() * 52
 bounds = (0,1) ## ((0,1),) * cov.shape[0]
 uncertain_scale = 1.5
 
+
+
 P = PortfolioOptimzer()
 
 w = P.equal_weight(len(cov))
